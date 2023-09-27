@@ -1,4 +1,5 @@
 ﻿using BigTyre.RTPStreamCollector;
+using BigTyre.RTPStreamCollector.Publishers;
 using CsvHelper;
 using CsvHelper.Configuration;
 using CsvHelper.TypeConversion;
@@ -25,14 +26,20 @@ config.Bind(settings);
 
 var mysqlConnectionString = settings.MySQLConnectionString ?? throw new Exception("MySQL connection string not configured.");
 
+var publishThresholdSeconds = settings.PublishThresholdSeconds ?? 30;
+if (publishThresholdSeconds < 2) 
+    throw new Exception("Configured publish threshold is too low. It must be at least 2 seconds.");
+if (publishThresholdSeconds > 60 * 60 * 24) 
+    throw new Exception("Configured publish threshold is too high. It must be less than 1 day.");
 
-var publishThreshold = TimeSpan.FromSeconds(10);
+var publishThreshold = TimeSpan.FromSeconds(publishThresholdSeconds);
 var publisher = new MultiRTPStreamStatisticsPublisher(
     new ConsoleRTPStreamStatisticsPublisher(),
     new MySQLRTPStreamStatisticsPublisher(mysqlConnectionString)
 );
 
-Console.WriteLine("RTP stats collection starting");
+Console.WriteLine($"RTP stats collection starting.");
+Console.WriteLine($"Stream stats will be published after {publishThreshold.TotalSeconds} seconds of inactivity");
 var stats = new RTPStatisticsCollector();
 
 Process? tsharkProcess = null;
@@ -170,9 +177,4 @@ enum InputMode
     SampleFile,
     TShark,
     Console
-}
-
-class AppSettings
-{
-    public string? MySQLConnectionString { get; set; }
 }

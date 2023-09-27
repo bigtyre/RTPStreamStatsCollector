@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualBasic;
+using System.IO;
 
 namespace BigTyre.RTPStreamCollector;
 
@@ -6,7 +7,7 @@ public class RTPStreamStatistics
 {
     private readonly List<RTPStreamPacket> _rows = new();
 
-    public int NumPackets { get; private set; }
+    public int NumberOfPacketsReceived { get; private set; }
 
     public string SourceIP { get; }
     public string DestinationIP { get; }
@@ -38,7 +39,7 @@ public class RTPStreamStatistics
     {
         var record = new RTPStreamPacket(row.Timestamp, row.RTPSequenceNumber, row.RTPTimestamp);
         _rows.Add(record);
-        NumPackets++;
+        NumberOfPacketsReceived++;
         LastPacketReceived = DateTime.Now;
     }
 
@@ -74,35 +75,6 @@ public class RTPStreamStatistics
         }
     }
 
-    public IEnumerable<TimeSpan> CalculateDifferences()
-    {
-        if (_rows.Count < 2)
-            yield break;
-
-        var rtpRate = 1f / 8000;
-
-        var first = _rows[0];
-        var firstTimestamp = first.Timestamp;
-        var rtpTimeStart = first.RTPTimestamp;
-
-        for (int i = 1; i < _rows.Count; i++)
-        {
-            var row = _rows[i];
-
-            var arrivalTime = row.Timestamp;
-            var rtpTimestamp = row.RTPTimestamp;
-
-            var diff = rtpTimestamp - rtpTimeStart;
-            double expectedTime = diff * rtpRate;
-
-            expectedTime += firstTimestamp;
-
-            var difference = arrivalTime - expectedTime;
-
-            yield return TimeSpan.FromSeconds(difference);
-        }
-    }
-
     public IEnumerable<TimeSpan> CalculateDeltas()
     {
         if (_rows.Count < 2)
@@ -121,4 +93,32 @@ public class RTPStreamStatistics
             yield return TimeSpan.FromSeconds(difference);
         }
     }
+
+    internal StatsSummary<double>? GetDeltaStats()
+    {
+        var deltas = CalculateDeltas().Select(s => s.TotalMilliseconds).Where(s => s > 0).ToList();
+        if (deltas.Any() is false) 
+            return null;
+
+        double minDelta = deltas.Min();
+        double meanDelta = deltas.Average();
+        double maxDelta = deltas.Max();
+
+        return new(minDelta, meanDelta, maxDelta);
+    }
+
+    internal StatsSummary<double>? GetJitterStats()
+    {
+        var jitterValues = CalculateJitter().Select(s => s.TotalMilliseconds).ToList();
+        if (jitterValues.Count < 2)
+            return null;
+
+        var minJitter = jitterValues.Min();
+        var meanJitter = jitterValues.Average();
+        var maxJitter = jitterValues.Max();
+
+        return new(minJitter, meanJitter, maxJitter);
+    }
 }
+
+public record StatsSummary<T>(T Min, T Average, T Max);
